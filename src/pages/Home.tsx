@@ -6,16 +6,34 @@ import { HealthDot } from '@/components/ui/HealthDot'
 import { useAuth } from '@/context/AuthContext'
 import type { HealthStatus } from '@/types/scan'
 
-const mockScans = [
-  { id: '1', name: 'Monstera Deliciosa', scientific: 'Monstera deliciosa', date: 'Today, 2h ago', status: 'healthy' as HealthStatus, emoji: '🌿' },
-  { id: '2', name: 'Peace Lily', scientific: 'Spathiphyllum wallisii', date: 'Yesterday', status: 'warning' as HealthStatus, emoji: '🌸' },
-  { id: '3', name: 'Snake Plant', scientific: 'Sansevieria trifasciata', date: '3 days ago', status: 'healthy' as HealthStatus, emoji: '🌱' },
-]
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 export function Home() {
   const { user, profile } = useAuth()
+  const [recentScans, setRecentScans] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const navigate = useNavigate()
   const firstName = profile?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'Friend'
+
+  useEffect(() => {
+    async function fetchRecent() {
+      if (!user?.id) return
+      const { data } = await supabase.from('scans').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(3)
+      if (data) {
+        setRecentScans(data.map(d => ({
+          id: d.id,
+          name: d.plant_name,
+          scientific: d.scientific_name,
+          date: new Date(d.created_at).toLocaleDateString(),
+          status: d.status,
+          emoji: '🌱'
+        })))
+      }
+      setIsLoading(false)
+    }
+    fetchRecent()
+  }, [user])
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning 🌤' : hour < 17 ? 'Good afternoon ☀️' : 'Good evening 🌙'
@@ -86,9 +104,9 @@ export function Home() {
         </div>
 
         <div className="space-y-2.5 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">
-          {profile === null ? (
+          {isLoading ? (
             [1, 2, 3].map(i => <SkeletonCard key={i} />)
-          ) : mockScans.map((scan, i) => (
+          ) : recentScans.map((scan, i) => (
             <motion.div
               key={scan.id}
               initial={{ opacity: 0, y: 12 }}

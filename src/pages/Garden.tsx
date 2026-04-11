@@ -5,16 +5,11 @@ import { Plus } from 'lucide-react'
 import { BottomNav } from '@/components/ui/BottomNav'
 import { HealthDot } from '@/components/ui/HealthDot'
 import { SkeletonTile } from '@/components/ui/Skeleton'
+import { useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import type { HealthStatus } from '@/types/scan'
 
 type GardenTab = 'all' | 'needs-care' | 'healthy'
-
-const mockGarden = [
-  { id: '1', name: 'Monstera', scientific: 'M. deliciosa', status: 'healthy' as HealthStatus, emoji: '🌿', date: 'Apr 1' },
-  { id: '2', name: 'Peace Lily', scientific: 'Spathiphyllum', status: 'warning' as HealthStatus, emoji: '🌸', date: 'Mar 28' },
-  { id: '3', name: 'Snake Plant', scientific: 'Sansevieria', status: 'healthy' as HealthStatus, emoji: '🌱', date: 'Mar 20' },
-  { id: '4', name: 'Fiddle Fig', scientific: 'Ficus lyrata', status: 'critical' as HealthStatus, emoji: '🍃', date: 'Mar 15' },
-]
 
 const tabs: { label: string; value: GardenTab }[] = [
   { label: 'All Plants', value: 'all' },
@@ -25,13 +20,32 @@ const tabs: { label: string; value: GardenTab }[] = [
 export function Garden() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<GardenTab>('all')
-  const [isLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [garden, setGarden] = useState<any[]>([])
 
-  const filtered = activeTab === 'all' ? mockGarden
-    : activeTab === 'healthy' ? mockGarden.filter(p => p.status === 'healthy')
-    : mockGarden.filter(p => p.status !== 'healthy')
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase.from('garden').select('*, scans(*)').order('added_at', { ascending: false })
+      if (data) {
+        setGarden(data.filter(d => d.scans).map(d => ({
+          id: d.scans.id,
+          name: d.nickname || d.scans.plant_name,
+          scientific: d.scans.scientific_name,
+          status: d.scans.status as HealthStatus,
+          emoji: '🪴',
+          date: new Date(d.added_at).toLocaleDateString()
+        })))
+      }
+      setIsLoading(false)
+    }
+    load()
+  }, [])
 
-  const healthyCount = mockGarden.filter(p => p.status === 'healthy').length
+  const filtered = activeTab === 'all' ? garden
+    : activeTab === 'healthy' ? garden.filter(p => p.status === 'healthy')
+    : garden.filter(p => p.status !== 'healthy')
+
+  const healthyCount = garden.filter(p => p.status === 'healthy').length
 
   return (
     <motion.div
@@ -44,7 +58,7 @@ export function Garden() {
       {/* Header */}
       <div className="px-4 pt-14 pb-4">
         <h1 className="font-serif text-[22px] text-plant-dark">My Garden</h1>
-        <p className="text-xs text-plant-light mt-0.5">{mockGarden.length} plants · {healthyCount} healthy</p>
+        <p className="text-xs text-plant-light mt-0.5">{garden.length} plants · {healthyCount} healthy</p>
       </div>
 
       {/* Tab Switcher */}

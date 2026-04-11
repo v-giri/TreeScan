@@ -4,16 +4,11 @@ import { useNavigate } from 'react-router-dom'
 import { BottomNav } from '@/components/ui/BottomNav'
 import { HealthDot } from '@/components/ui/HealthDot'
 import { SkeletonCard } from '@/components/ui/Skeleton'
+import { useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import type { HealthStatus } from '@/types/scan'
 
 type FilterType = 'all' | HealthStatus
-
-const mockHistory = [
-  { id: '1', name: 'Monstera Deliciosa', scientific: 'Monstera deliciosa', date: 'Today, 2:30 PM', status: 'healthy' as HealthStatus, emoji: '🌿' },
-  { id: '2', name: 'Peace Lily', scientific: 'Spathiphyllum wallisii', date: 'Yesterday, 11:00 AM', status: 'warning' as HealthStatus, emoji: '🌸' },
-  { id: '3', name: 'Snake Plant', scientific: 'Sansevieria trifasciata', date: '3 days ago', status: 'healthy' as HealthStatus, emoji: '🌱' },
-  { id: '4', name: 'Fiddle Leaf Fig', scientific: 'Ficus lyrata', date: '1 week ago', status: 'critical' as HealthStatus, emoji: '🍃' },
-]
 
 const filters: { label: string; value: FilterType }[] = [
   { label: 'All', value: 'all' },
@@ -25,9 +20,28 @@ const filters: { label: string; value: FilterType }[] = [
 export function History() {
   const navigate = useNavigate()
   const [filter, setFilter] = useState<FilterType>('all')
-  const [isLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [history, setHistory] = useState<any[]>([])
 
-  const filtered = filter === 'all' ? mockHistory : mockHistory.filter(s => s.status === filter)
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase.from('scans').select('*').order('created_at', { ascending: false })
+      if (data) {
+        setHistory(data.map(d => ({
+          id: d.id,
+          name: d.plant_name,
+          scientific: d.scientific_name,
+          date: new Date(d.created_at).toLocaleDateString(),
+          status: d.status,
+          emoji: '🌱'
+        })))
+      }
+      setIsLoading(false)
+    }
+    load()
+  }, [])
+
+  const filtered = filter === 'all' ? history : history.filter(s => s.status === filter)
 
   return (
     <motion.div
@@ -41,7 +55,7 @@ export function History() {
       <div className="px-4 md:px-8 max-w-screen-xl mx-auto pt-14 pb-4 flex items-center gap-3">
         <h1 className="font-serif text-[22px] text-plant-dark flex-1">Scan History</h1>
         <span className="bg-mint-2 text-sage-deep text-xs font-semibold rounded-full px-3 py-1">
-          {mockHistory.length} scans
+          {history.length} scans
         </span>
       </div>
 
