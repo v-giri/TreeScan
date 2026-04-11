@@ -36,10 +36,10 @@ export function useCamera() {
     streamRef.current = null
   }, [])
 
-  const capturePhoto = useCallback((
+  const capturePhoto = useCallback(async (
     videoRef: React.RefObject<HTMLVideoElement | null>,
     canvasRef: React.RefObject<HTMLCanvasElement | null>,
-  ): File | null => {
+  ): Promise<File | null> => {
     const video = videoRef.current
     const canvas = canvasRef.current
     if (!video || !canvas) return null
@@ -50,9 +50,16 @@ export function useCamera() {
     if (!ctx) return null
     ctx.drawImage(video, 0, 0)
 
-    // Convert to blob synchronously isn't possible; return null here
-    // In real usage call canvas.toBlob() with callback
-    return null
+    return new Promise(resolve => {
+      canvas.toBlob(blob => {
+        if (!blob) {
+          resolve(null)
+          return
+        }
+        const file = new File([blob], 'camera-capture.jpg', { type: 'image/jpeg' })
+        resolve(file)
+      }, 'image/jpeg', 0.9)
+    })
   }, [])
 
   return { isCameraSupported, hasPermission, requestCameraPermission, startCamera, stopCamera, capturePhoto }

@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Upload, Camera } from 'lucide-react'
+import { useCamera } from '@/hooks/useCamera'
 import { BottomNav } from '@/components/ui/BottomNav'
 import { Button } from '@/components/ui/Button'
 
@@ -13,6 +14,27 @@ export function Scan() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const { startCamera, stopCamera, capturePhoto } = useCamera()
+
+  useEffect(() => {
+    if (activeTab === 'camera' && !preview) {
+      startCamera(videoRef)
+    } else {
+      stopCamera()
+    }
+    return () => stopCamera()
+  }, [activeTab, preview, startCamera, stopCamera])
+
+  const handleCapture = async () => {
+    const file = await capturePhoto(videoRef, canvasRef)
+    if (file) {
+      setSelectedFile(file)
+      setPreview(URL.createObjectURL(file))
+      stopCamera()
+    }
+  }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -73,23 +95,42 @@ export function Scan() {
 
       <div className="px-4 md:max-w-screen-md md:mx-auto space-y-4">
         {activeTab === 'camera' ? (
-          /* Camera View Placeholder */
-          <div className="bg-sage-deep rounded-[28px] h-56 flex flex-col items-center justify-center relative overflow-hidden">
-            <div className="absolute inset-5 border-2 border-white/40 rounded-[16px] pointer-events-none" />
-            <span className="text-5xl mb-3">🌿</span>
-            <p className="text-white/70 text-xs">Point camera at your plant</p>
-            <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-6">
-              <div className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center">
-                <span className="text-white text-lg">⚡</span>
+          /* Camera View */
+          <div className="bg-black/90 rounded-[28px] h-[340px] md:h-[400px] flex flex-col items-center justify-center relative overflow-hidden">
+            {!preview && (
+              <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+            )}
+            <canvas ref={canvasRef} className="hidden" />
+
+            {preview ? (
+              <img src={preview} alt="Captured" className="absolute inset-0 w-full h-full object-cover z-10" />
+            ) : (
+              <div className="absolute inset-5 border-2 border-white/40 rounded-[16px] pointer-events-none z-10" />
+            )}
+
+            {!preview && (
+              <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-8 z-20">
+                <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center">
+                  <span className="text-white text-lg">⚡</span>
+                </div>
+                <button className="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center transition-transform active:scale-95"
+                  onClick={handleCapture}>
+                  <div className="w-12 h-12 bg-white rounded-full" />
+                </button>
+                <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center">
+                  <span className="text-white text-lg">🔄</span>
+                </div>
               </div>
-              <button className="w-14 h-14 bg-white rounded-full shadow-fab flex items-center justify-center"
-                onClick={() => alert('Camera capture coming in Phase 2!')}>
-                <div className="w-12 h-12 border-2 border-sage-deep rounded-full" />
+            )}
+
+            {preview && (
+              <button
+                onClick={e => { e.stopPropagation(); setPreview(null); setSelectedFile(null) }}
+                className="absolute top-4 right-4 bg-white/90 backdrop-blur-md rounded-full px-4 py-1.5 text-xs font-bold text-plant-dark shadow-card z-20"
+              >
+                Retake
               </button>
-              <div className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center">
-                <span className="text-white text-lg">🔄</span>
-              </div>
-            </div>
+            )}
           </div>
         ) : (
           /* Upload Zone */
