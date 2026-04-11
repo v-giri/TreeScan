@@ -5,6 +5,7 @@ import { ArrowLeft, Upload, Camera } from 'lucide-react'
 import { useCamera } from '@/hooks/useCamera'
 import { BottomNav } from '@/components/ui/BottomNav'
 import { Button } from '@/components/ui/Button'
+import { supabase } from '@/lib/supabase'
 
 type TabType = 'camera' | 'upload'
 
@@ -12,6 +13,7 @@ export function Scan() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabType>('upload')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -51,10 +53,68 @@ export function Scan() {
     setPreview(URL.createObjectURL(file))
   }
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!selectedFile) return
-    // Navigate to result page with mock ID for now
-    navigate('/result/demo')
+    setIsAnalyzing(true)
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('Please login to analyze plants!')
+        setIsAnalyzing(false)
+        navigate('/login')
+        return
+      }
+
+      // Convert image to base64
+      const reader = new FileReader()
+      reader.readAsDataURL(selectedFile)
+      
+      const base64Data = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve((reader.result as string).split(',')[1])
+      })
+
+      // Upload original file to Storage
+      const fileExt = selectedFile.name.split('.').pop() || 'jpg'
+      const filePath = `${user.id}/${crypto.randomUUID()}.${fileExt}`
+      
+      await supabase.storage.from('scan-images').upload(filePath, selectedFile)
+      const { data: { publicUrl } } = supabase.storage.from('scan-images').getPublicUrl(filePath)
+
+      // Call Edge Function
+      const { data: result, error: analyzeError } = await supabase.functions.invoke('analyze-plant', {
+        body: {
+          imageBase64: base64Data,
+          mimeType: selectedFile.type || 'image/jpeg',
+          userId: user.id
+        }
+      })
+
+      if (analyzeError) throw new Error(analyzeError.message || 'Analysis failed')
+
+      // Save to database
+      const { data: scanRow, error: dbError } = await supabase.from('scans').insert({
+        user_id: user.id,
+        image_url: publicUrl,
+        plant_name: result.commonName,
+        scientific_name: result.scientificName,
+        status: result.health,
+        confidence: result.confidence,
+        health_score: 90,
+        problems: result.problems,
+        treatment_steps: result.treatments,
+        water_schedule: result.careProfile?.watering || '',
+        sunlight_needs: result.careProfile?.sunlight || ''
+      }).select().single()
+
+      if (dbError) throw dbError
+
+      navigate(`/result/${scanRow.id}`)
+    } catch (err: any) {
+      alert(`Error analyzing plant: ${err.message}`)
+      console.error(err)
+      setIsAnalyzing(false)
+    }
   }
 
   return (
@@ -193,10 +253,11 @@ export function Scan() {
         {/* Analyze CTA */}
         <Button
           onClick={handleAnalyze}
-          disabled={!selectedFile && activeTab === 'upload'}
+          disabled={(!selectedFile && activeTab === 'upload') || isAnalyzing}
+          isLoading={isAnalyzing}
           fullWidth
         >
-          🔍 Analyze Plant
+          {isAnalyzing ? 'Analyzing...' : '🔍 Analyze Plant'}
         </Button>
       </div>
 

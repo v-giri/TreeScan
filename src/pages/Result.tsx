@@ -4,6 +4,7 @@ import { ArrowLeft, Share2 } from 'lucide-react'
 import { BottomNav } from '@/components/ui/BottomNav'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { supabase } from '@/lib/supabase'
 import type { HealthStatus } from '@/types/scan'
 
 // Demo result data
@@ -34,7 +35,60 @@ const demoResult = {
 export function Result() {
   const navigate = useNavigate()
   const { id } = useParams()
-  const result = demoResult // Will come from Supabase in Phase 2
+  const [result, setResult] = useState<any>(null)
+
+  import('react').then(({ useEffect }) => {
+    useEffect(() => {
+      async function fetchScan() {
+        if (!id || id === 'demo') {
+          setResult(demoResult)
+          return
+        }
+        
+        const { data } = await supabase.from('scans').select('*').eq('id', id).single()
+        if (data) {
+          setResult({
+            commonName: data.plant_name,
+            scientificName: data.scientific_name,
+            health: data.status as HealthStatus,
+            confidence: data.confidence,
+            family: 'Unknown',
+            summary: data.treatment_steps?.[0] || 'Please see care instructions.',
+            problems: data.problems || [],
+            treatments: data.treatment_steps || [],
+            careProfile: {
+              watering: data.water_schedule || 'Check soil moisture',
+              sunlight: data.sunlight_needs || 'Indirect light',
+              soil: 'Well-draining mix',
+              fertilizer: 'Standard plant food'
+            },
+            funFact: 'Scanned via TreeScan AI',
+            emoji: '🌱'
+          })
+        } else {
+          // Fallback to demo if not found
+          setResult(demoResult)
+        }
+      }
+      fetchScan()
+    }, [id])
+  })
+
+  const [saving, setSaving] = useState(false)
+  const handleSaveToGarden = async () => {
+    if (!id || id === 'demo') return alert('Cannot save demo scan to garden!')
+    setSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase.from('garden').insert({
+        user_id: user.id,
+        scan_id: id,
+        nickname: result.commonName
+      })
+      navigate('/garden')
+    }
+    setSaving(false)
+  }
 
   const handleShare = async () => {
     if (navigator.share) {
@@ -58,7 +112,7 @@ export function Result() {
       <div className="bg-sage-deep px-4 pt-14 pb-20">
         <div className="flex items-center justify-between mb-6">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/home')}
             className="w-9 h-9 bg-white/15 rounded-[12px] flex items-center justify-center"
           >
             <ArrowLeft size={16} className="text-white" />
@@ -69,10 +123,16 @@ export function Result() {
           </button>
         </div>
         <div className="flex justify-center">
-          <span className="text-[80px] leading-none">{result.emoji}</span>
+          {result ? <span className="text-[80px] leading-none">{result.emoji}</span> : <div className="w-20 h-20 rounded-full bg-white/20 animate-pulse" />}
         </div>
       </div>
 
+      {!result ? (
+        <div className="mx-4 -mt-14 z-10 relative bg-white rounded-[28px] shadow-card-lg p-10 flex text-center items-center justify-center">
+          <p className="text-sage-dark animate-pulse">Loading scan result...</p>
+        </div>
+      ) : (
+      <>
       {/* Floating Result Card */}
       <div className="mx-4 -mt-14 z-10 relative">
         <motion.div
@@ -185,10 +245,12 @@ export function Result() {
         </div>
 
         {/* CTA */}
-        <Button fullWidth onClick={() => alert(`Saved! Scan ID: ${id}`)}>
+        <Button fullWidth onClick={handleSaveToGarden} disabled={saving || id === 'demo'} isLoading={saving}>
           🪴 Save to Garden
         </Button>
       </div>
+      </>
+      )}
 
       <BottomNav />
     </motion.div>
