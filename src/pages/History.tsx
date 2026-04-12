@@ -52,7 +52,7 @@ export function History() {
       transition={{ duration: 0.25, ease: 'easeOut' }}
     >
       {/* Header */}
-      <div className="px-4 md:px-8 max-w-screen-xl mx-auto pt-14 pb-4 flex items-center gap-3">
+      <div className="px-4 md:px-8 max-w-3xl mx-auto pt-14 pb-4 flex items-center gap-3">
         <h1 className="font-serif text-[22px] text-plant-dark flex-1">Scan History</h1>
         <span className="bg-mint-2 text-sage-deep text-xs font-semibold rounded-full px-3 py-1">
           {history.length} scans
@@ -60,7 +60,7 @@ export function History() {
       </div>
 
       {/* Filters */}
-      <div className="px-4 flex gap-2 overflow-x-auto pb-1 mb-4">
+      <div className="px-4 md:px-8 max-w-3xl md:mx-auto flex gap-2 overflow-x-auto pb-1 mb-4">
         {filters.map(f => (
           <button
             key={f.value}
@@ -75,7 +75,7 @@ export function History() {
       </div>
 
       {/* Scan List */}
-      <div className="px-4 md:px-8 max-w-screen-xl mx-auto space-y-2.5 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">
+      <div className="px-4 md:px-8 max-w-3xl mx-auto space-y-2.5 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">
         {isLoading ? (
           [1, 2, 3].map(i => <SkeletonCard key={i} />)
         ) : filtered.length === 0 ? (

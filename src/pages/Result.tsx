@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import type { HealthStatus } from '@/types/scan'
+import { useState, useEffect } from 'react'
 
 // Demo result data
 const demoResult = {
@@ -37,42 +38,48 @@ export function Result() {
   const { id } = useParams()
   const [result, setResult] = useState<any>(null)
 
-  import('react').then(({ useEffect }) => {
-    useEffect(() => {
-      async function fetchScan() {
-        if (!id || id === 'demo') {
-          setResult(demoResult)
-          return
-        }
-        
-        const { data } = await supabase.from('scans').select('*').eq('id', id).single()
-        if (data) {
-          setResult({
-            commonName: data.plant_name,
-            scientificName: data.scientific_name,
-            health: data.status as HealthStatus,
-            confidence: data.confidence,
-            family: 'Unknown',
-            summary: data.treatment_steps?.[0] || 'Please see care instructions.',
-            problems: data.problems || [],
-            treatments: data.treatment_steps || [],
-            careProfile: {
-              watering: data.water_schedule || 'Check soil moisture',
-              sunlight: data.sunlight_needs || 'Indirect light',
-              soil: 'Well-draining mix',
-              fertilizer: 'Standard plant food'
-            },
-            funFact: 'Scanned via TreeScan AI',
-            emoji: '🌱'
-          })
-        } else {
-          // Fallback to demo if not found
-          setResult(demoResult)
-        }
+  useEffect(() => {
+    async function fetchScan() {
+      if (!id || id === 'demo') {
+        setResult(demoResult)
+        return
       }
-      fetchScan()
-    }, [id])
-  })
+      
+      const { data, error } = await supabase.from('scans').select('*').eq('id', id).single()
+      
+      if (error) {
+        console.error("Error fetching scan:", error)
+      }
+
+      if (data) {
+        setResult({
+          commonName: data.plant_name,
+          scientificName: data.scientific_name,
+          health: data.status as HealthStatus,
+          confidence: data.confidence,
+          family: 'Unknown',
+          summary: data.treatment_steps?.[0] || 'Please see care instructions.',
+          problems: data.problems || [],
+          treatments: data.treatment_steps || [],
+          careProfile: {
+            watering: data.water_schedule || 'Check soil moisture',
+            sunlight: data.sunlight_needs || 'Indirect light',
+            soil: 'Well-draining mix',
+            fertilizer: 'Standard plant food'
+          },
+          funFact: 'Scanned via TreeScan AI',
+          emoji: '🌱'
+        })
+      } else {
+        // Show an error rather than silently falling back to demo
+        console.log("No scan found for id:", id, "falling back to error.")
+        setResult({
+          error: "Scan not found. It may have been deleted, or you might not have permission to view it."
+        })
+      }
+    }
+    fetchScan()
+  }, [id])
 
   const [saving, setSaving] = useState(false)
   const handleSaveToGarden = async () => {
@@ -110,31 +117,39 @@ export function Result() {
     >
       {/* Hero Header */}
       <div className="bg-sage-deep px-4 pt-14 pb-20">
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={() => navigate('/home')}
-            className="w-9 h-9 bg-white/15 rounded-[12px] flex items-center justify-center"
-          >
-            <ArrowLeft size={16} className="text-white" />
-          </button>
-          <span className="text-white text-sm font-semibold">Scan Result</span>
-          <button onClick={handleShare} className="w-9 h-9 bg-white/15 rounded-[12px] flex items-center justify-center">
-            <Share2 size={16} className="text-white" />
-          </button>
-        </div>
-        <div className="flex justify-center">
-          {result ? <span className="text-[80px] leading-none">{result.emoji}</span> : <div className="w-20 h-20 rounded-full bg-white/20 animate-pulse" />}
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={() => navigate('/home')}
+              className="w-9 h-9 bg-white/15 rounded-[12px] flex items-center justify-center"
+            >
+              <ArrowLeft size={16} className="text-white" />
+            </button>
+            <span className="text-white text-sm font-semibold">Scan Result</span>
+            <button onClick={handleShare} className="w-9 h-9 bg-white/15 rounded-[12px] flex items-center justify-center">
+              <Share2 size={16} className="text-white" />
+            </button>
+          </div>
+          <div className="flex justify-center">
+            {result ? <span className="text-[80px] leading-none">{result.emoji}</span> : <div className="w-20 h-20 rounded-full bg-white/20 animate-pulse" />}
+          </div>
         </div>
       </div>
 
       {!result ? (
-        <div className="mx-4 -mt-14 z-10 relative bg-white rounded-[28px] shadow-card-lg p-10 flex text-center items-center justify-center">
+        <div className="mx-4 md:max-w-3xl md:mx-auto -mt-14 z-10 relative bg-white rounded-[28px] shadow-card-lg p-10 flex text-center items-center justify-center">
           <p className="text-sage-dark animate-pulse">Loading scan result...</p>
+        </div>
+      ) : result.error ? (
+        <div className="mx-4 md:max-w-3xl md:mx-auto -mt-14 z-10 relative bg-white rounded-[28px] shadow-card-lg p-10 flex flex-col items-center justify-center text-center gap-4">
+          <span className="text-4xl">⚠️</span>
+          <p className="text-sage-dark font-medium">{result.error}</p>
+          <Button onClick={() => navigate('/home')}>Return Home</Button>
         </div>
       ) : (
       <>
       {/* Floating Result Card */}
-      <div className="mx-4 -mt-14 z-10 relative">
+      <div className="mx-4 md:max-w-3xl md:mx-auto -mt-14 z-10 relative">
         <motion.div
           className="bg-white rounded-[28px] shadow-card-lg p-5"
           initial={{ opacity: 0, y: 20 }}
@@ -171,7 +186,7 @@ export function Result() {
         </motion.div>
       </div>
 
-      <div className="px-4 mt-4 space-y-4">
+      <div className="px-4 md:max-w-3xl md:mx-auto mt-4 space-y-4">
         {/* Summary */}
         <div className="bg-white rounded-[20px] shadow-card p-4">
           <p className="text-xs text-plant-mid leading-relaxed">{result.summary}</p>
@@ -207,7 +222,7 @@ export function Result() {
           <div>
             <h2 className="text-[15px] font-semibold text-plant-dark mb-2">Issues Detected</h2>
             <div className="bg-white rounded-[20px] shadow-card p-4 space-y-2">
-              {result.problems.map((p, i) => (
+              {result.problems.map((p: string, i: number) => (
                 <div key={i} className="flex items-start gap-2.5">
                   <span className="w-2 h-2 rounded-full bg-[#D95555] flex-shrink-0 mt-1" />
                   <p className="text-xs text-plant-mid">{p}</p>
@@ -221,7 +236,7 @@ export function Result() {
         <div>
           <h2 className="text-[15px] font-semibold text-plant-dark mb-2">Treatment Plan</h2>
           <div className="space-y-2.5">
-            {result.treatments.map((t, i) => (
+            {result.treatments.map((t: string, i: number) => (
               <motion.div
                 key={i}
                 className="bg-white rounded-[20px] shadow-card p-4 flex gap-3"

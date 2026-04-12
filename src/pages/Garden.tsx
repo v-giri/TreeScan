@@ -56,13 +56,13 @@ export function Garden() {
       transition={{ duration: 0.25, ease: 'easeOut' }}
     >
       {/* Header */}
-      <div className="px-4 pt-14 pb-4">
+      <div className="px-4 md:px-8 max-w-3xl md:mx-auto pt-14 pb-4">
         <h1 className="font-serif text-[22px] text-plant-dark">My Garden</h1>
         <p className="text-xs text-plant-light mt-0.5">{garden.length} plants · {healthyCount} healthy</p>
       </div>
 
       {/* Tab Switcher */}
-      <div className="mx-4 bg-white rounded-[14px] p-1 flex gap-0.5 shadow-card mb-4">
+      <div className="mx-4 md:max-w-3xl md:mx-auto bg-white rounded-[14px] p-1 flex gap-0.5 shadow-card mb-4">
         {tabs.map(tab => (
           <button
             key={tab.value}
@@ -77,7 +77,7 @@ export function Garden() {
       </div>
 
       {/* Grid */}
-      <div className="px-4 md:px-8 max-w-screen-xl mx-auto grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 md:gap-5">
+      <div className="px-4 md:px-8 max-w-3xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
         {isLoading ? (
           [1, 2, 3, 4].map(i => <SkeletonTile key={i} />)
         ) : filtered.map((plant, i) => (
