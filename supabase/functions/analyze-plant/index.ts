@@ -31,23 +31,38 @@ serve(async (req) => {
     const PLANT_ID_KEY = Deno.env.get('PLANT_ID_KEY') || ''
     const GEMINI_KEY = Deno.env.get('GEMINI_KEY') || ''
 
-    // --- Step 1: Call Plant.id v3 ---
-    const plantIdRes = await fetch('https://api.plant.id/v3/health_assessment', {
+    // Check secrets are available
+    if (!PLANT_ID_KEY) {
+      throw new Error('PLANT_ID_KEY secret is not set on this Edge Function')
+    }
+    if (!GEMINI_KEY) {
+      throw new Error('GEMINI_KEY secret is not set on this Edge Function')
+    }
+
+    // --- Step 1: Call Plant.id v3 (identification + health) ---
+    const plantIdPayload = {
+      images: [`data:${mimeType};base64,${imageBase64}`],
+      health: 'all',
+      classification_level: 'species',
+      details: ['common_names', 'taxonomy'],
+    }
+
+    console.log('Calling Plant.id with payload size:', imageBase64.length)
+
+    const plantIdRes = await fetch('https://api.plant.id/v3/identification', {
       method: 'POST',
       headers: { 'Api-Key': PLANT_ID_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        images: [`data:${mimeType};base64,${imageBase64}`],
-        health: 'all',
-        details: ['common_names', 'taxonomy', 'wiki_description'],
-      }),
+      body: JSON.stringify(plantIdPayload),
     })
 
     if (!plantIdRes.ok) {
       const errText = await plantIdRes.text()
-      throw new Error(`Plant.id error: ${errText}`)
+      console.error('Plant.id error status:', plantIdRes.status, 'body:', errText)
+      throw new Error(`Plant.id error (${plantIdRes.status}): ${errText}`)
     }
 
     const plantIdData = await plantIdRes.json()
+    console.log('Plant.id response keys:', Object.keys(plantIdData))
 
     // Extract data
     const topSuggestion = plantIdData.result?.classification?.suggestions?.[0]
@@ -78,8 +93,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
     "watering": "frequency and amount",
     "sunlight": "light requirements",
     "soil": "soil type",
-    "fertilizer": "feeding schedule",
-    "season": "best growing season"
+    "fertilizer": "feeding schedule"
   },
   "summary": "Two sentence plain English description of plant health.",
   "funFact": "One interesting fact about this plant.",
@@ -106,7 +120,6 @@ Return ONLY valid JSON (no markdown, no code blocks):
         sunlight: 'Bright indirect light',
         soil: 'Well-draining potting mix',
         fertilizer: 'Monthly during growing season',
-        season: 'Spring to fall',
       },
       summary: `This ${commonName} appears to be ${health}. Monitor regularly for changes.`,
       funFact: `${commonName} is a fascinating plant with unique characteristics.`,
@@ -119,8 +132,13 @@ Return ONLY valid JSON (no markdown, no code blocks):
       if (text) {
         try {
           geminiData = JSON.parse(text)
-        } catch { /* use defaults */ }
+        } catch (e) {
+          console.error('Failed to parse Gemini JSON:', e, 'raw text:', text)
+        }
       }
+    } else {
+      const geminiErr = await geminiRes.text()
+      console.error('Gemini error:', geminiRes.status, geminiErr)
     }
 
     // --- Step 4: Build final result ---
@@ -142,7 +160,9 @@ Return ONLY valid JSON (no markdown, no code blocks):
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Analysis failed' }), {
+    const message = err instanceof Error ? err.message : 'Analysis failed'
+    console.error('Edge function error:', message)
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

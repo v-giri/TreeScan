@@ -90,7 +90,21 @@ export function Scan() {
         }
       })
 
-      if (analyzeError) throw new Error(analyzeError.message || 'Analysis failed')
+      if (analyzeError) {
+        // Extract the real error body from the edge function response
+        let realMessage = analyzeError.message || 'Analysis failed'
+        try {
+          // FunctionsHttpError has a .context with the actual response
+          const context = (analyzeError as any).context
+          if (context) {
+            const body = await context.json?.() || await context.text?.()
+            if (typeof body === 'object' && body?.error) realMessage = body.error
+            else if (typeof body === 'string') realMessage = body
+          }
+        } catch { /* ignore parse error */ }
+        throw new Error(realMessage)
+      }
+
 
       // Save to database
       const { data: scanRow, error: dbError } = await supabase.from('scans').insert({
