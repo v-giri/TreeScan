@@ -4,7 +4,7 @@ import { BottomNav } from '@/components/ui/BottomNav'
 import { SkeletonCard } from '@/components/ui/Skeleton'
 import { HealthDot } from '@/components/ui/HealthDot'
 import { useAuth } from '@/context/AuthContext'
-import type { HealthStatus } from '@/types/scan'
+
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
