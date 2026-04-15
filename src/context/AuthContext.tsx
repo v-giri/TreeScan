@@ -34,14 +34,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('full_name, avatar_url, scan_count')
         .eq('id', userId)
         .single()
+      if (error) {
+        console.debug('Profile fetch error (expected if table not created):', error.message)
+        return
+      }
       if (data) setProfile(data as Profile)
-    } catch {
-      // Profile may not exist yet, ignore error
+    } catch (err) {
+      console.debug('Profile fetch exception:', err)
     }
   }, [])
 

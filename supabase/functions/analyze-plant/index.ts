@@ -27,6 +27,8 @@ serve(async (req) => {
     // Validate JWT
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
+      console.error('[analyze-plant] Missing authorization header')
+      console.error('[analyze-plant] Request headers:', Object.fromEntries(req.headers.entries()))
       return respond({ error: 'No authorization header — please log in again.' })
     }
 
@@ -35,8 +37,14 @@ serve(async (req) => {
     const PLANT_ID_KEY = Deno.env.get('PLANT_ID_KEY') || ''
     const GEMINI_KEY = Deno.env.get('GEMINI_KEY') || ''
 
-    if (!PLANT_ID_KEY) return respond({ error: 'Server config error: PLANT_ID_KEY not set.' })
-    if (!GEMINI_KEY) return respond({ error: 'Server config error: GEMINI_KEY not set.' })
+    if (!PLANT_ID_KEY) {
+      console.error('[analyze-plant] PLANT_ID_KEY environment variable not set')
+      return respond({ error: 'Server config error: PLANT_ID_KEY not set. Please run: supabase secrets set PLANT_ID_KEY="your_key"' })
+    }
+    if (!GEMINI_KEY) {
+      console.error('[analyze-plant] GEMINI_KEY environment variable not set')
+      return respond({ error: 'Server config error: GEMINI_KEY not set. Please run: supabase secrets set GEMINI_KEY="your_key"' })
+    }
 
     console.log(`[analyze-plant] Image size: ${imageBase64.length} chars, mime: ${mimeType}`)
 
