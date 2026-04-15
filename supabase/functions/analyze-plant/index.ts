@@ -16,14 +16,18 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  // Always return 200 so the frontend can read the error message
+  const respond = (data: object) =>
+    new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+
   try {
     // Validate JWT
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'No authorization header' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return respond({ error: 'No authorization header — please log in again.' })
     }
 
     const { imageBase64, mimeType } = await req.json() as AnalyzeRequest
@@ -31,38 +35,31 @@ serve(async (req) => {
     const PLANT_ID_KEY = Deno.env.get('PLANT_ID_KEY') || ''
     const GEMINI_KEY = Deno.env.get('GEMINI_KEY') || ''
 
-    // Check secrets are available
-    if (!PLANT_ID_KEY) {
-      throw new Error('PLANT_ID_KEY secret is not set on this Edge Function')
-    }
-    if (!GEMINI_KEY) {
-      throw new Error('GEMINI_KEY secret is not set on this Edge Function')
-    }
+    if (!PLANT_ID_KEY) return respond({ error: 'Server config error: PLANT_ID_KEY not set.' })
+    if (!GEMINI_KEY) return respond({ error: 'Server config error: GEMINI_KEY not set.' })
 
-    // --- Step 1: Call Plant.id v3 (identification + health) ---
-    const plantIdPayload = {
-      images: [`data:${mimeType};base64,${imageBase64}`],
-      health: 'all',
-      classification_level: 'species',
-      details: ['common_names', 'taxonomy'],
-    }
+    console.log(`[analyze-plant] Image size: ${imageBase64.length} chars, mime: ${mimeType}`)
 
-    console.log('Calling Plant.id with payload size:', imageBase64.length)
-
+    // --- Step 1: Call Plant.id v3 identification ---
     const plantIdRes = await fetch('https://api.plant.id/v3/identification', {
       method: 'POST',
       headers: { 'Api-Key': PLANT_ID_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify(plantIdPayload),
+      body: JSON.stringify({
+        images: [`data:${mimeType};base64,${imageBase64}`],
+        health: 'all',
+        classification_level: 'species',
+        details: ['common_names', 'taxonomy'],
+      }),
     })
 
+    const plantIdText = await plantIdRes.text()
+    console.log(`[analyze-plant] Plant.id status: ${plantIdRes.status}, body: ${plantIdText.slice(0, 300)}`)
+
     if (!plantIdRes.ok) {
-      const errText = await plantIdRes.text()
-      console.error('Plant.id error status:', plantIdRes.status, 'body:', errText)
-      throw new Error(`Plant.id error (${plantIdRes.status}): ${errText}`)
+      return respond({ error: `Plant.id error (${plantIdRes.status}): ${plantIdText}` })
     }
 
-    const plantIdData = await plantIdRes.json()
-    console.log('Plant.id response keys:', Object.keys(plantIdData))
+    const plantIdData = JSON.parse(plantIdText)
 
     // Extract data
     const topSuggestion = plantIdData.result?.classification?.suggestions?.[0]
@@ -78,12 +75,13 @@ serve(async (req) => {
       .filter((d: { probability: number; name: string }) => d.probability > 0.2)
       .map((d: { name: string; probability: number }) => `${d.name} (${Math.round(d.probability * 100)}%)`)
 
-    // Determine health status
     const health = isHealthy ? 'healthy' : diseases.length > 1 ? 'critical' : 'warning'
+
+    console.log(`[analyze-plant] Identified: ${scientificName} (${confidence}%), health: ${health}`)
 
     // --- Step 2: Build Gemini prompt ---
     const prompt = `A plant scan identified: ${scientificName} (${confidence}% confidence).
-Healthy probability: ${Math.round(isHealthyProb * 100)}%. 
+Healthy probability: ${Math.round(isHealthyProb * 100)}%.
 Issues detected: ${diseases.length > 0 ? diseases.join(', ') : 'none'}.
 
 Return ONLY valid JSON (no markdown, no code blocks):
@@ -130,19 +128,15 @@ Return ONLY valid JSON (no markdown, no code blocks):
       const geminiJson = await geminiRes.json()
       const text = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text
       if (text) {
-        try {
-          geminiData = JSON.parse(text)
-        } catch (e) {
-          console.error('Failed to parse Gemini JSON:', e, 'raw text:', text)
-        }
+        try { geminiData = JSON.parse(text) }
+        catch (e) { console.error('[analyze-plant] Gemini JSON parse failed:', e) }
       }
     } else {
       const geminiErr = await geminiRes.text()
-      console.error('Gemini error:', geminiRes.status, geminiErr)
+      console.error(`[analyze-plant] Gemini error (${geminiRes.status}): ${geminiErr}`)
     }
 
-    // --- Step 4: Build final result ---
-    const result = {
+    return respond({
       commonName,
       scientificName,
       family,
@@ -150,21 +144,14 @@ Return ONLY valid JSON (no markdown, no code blocks):
       health,
       problems: diseases,
       treatments: geminiData.treatments || [],
-      careProfile: geminiData.careProfile || geminiData.care_profile || {},
+      careProfile: geminiData.careProfile || {},
       summary: geminiData.summary || '',
-      funFact: geminiData.funFact || geminiData.fun_fact || '',
+      funFact: geminiData.funFact || '',
       urgency: geminiData.urgency || 'low',
-    }
-
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Analysis failed'
-    console.error('Edge function error:', message)
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[analyze-plant] Unhandled exception:', message)
+    return respond({ error: `Server error: ${message}` })
   }
 })
