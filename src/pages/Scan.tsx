@@ -104,6 +104,7 @@ export function Scan() {
         } catch { /* ignore parse error */ }
         throw new Error(realMessage)
       }
+      if (result?.error) throw new Error(result.error)
 
 
       // Save to database
