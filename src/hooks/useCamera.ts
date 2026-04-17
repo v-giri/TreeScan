@@ -3,31 +3,37 @@ import { useState, useCallback, useRef } from 'react'
 export function useCamera() {
   const [isCameraSupported] = useState(() => !!navigator.mediaDevices?.getUserMedia)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
+  const [cameraError, setCameraError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  const requestCameraPermission = useCallback(async (): Promise<boolean> => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      stream.getTracks().forEach(t => t.stop())
-      setHasPermission(true)
-      return true
-    } catch {
-      setHasPermission(false)
-      return false
-    }
-  }, [])
-
   const startCamera = useCallback(async (videoRef: React.RefObject<HTMLVideoElement | null>): Promise<void> => {
-    if (!videoRef.current) return
+    setCameraError(null)
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera not supported on this device or browser.')
+      setHasPermission(false)
+      return
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
       })
       streamRef.current = stream
-      videoRef.current.srcObject = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play().catch(() => {/* autoplay may be blocked */})
+      }
       setHasPermission(true)
-    } catch {
+    } catch (err: any) {
       setHasPermission(false)
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraError('Camera permission denied. Please allow camera access in your browser settings.')
+      } else if (err.name === 'NotFoundError') {
+        setCameraError('No camera found on this device.')
+      } else if (err.name === 'NotReadableError') {
+        setCameraError('Camera is in use by another app. Please close it and try again.')
+      } else {
+        setCameraError(`Camera error: ${err.message || err.name}`)
+      }
     }
   }, [])
 
@@ -44,23 +50,22 @@ export function useCamera() {
     const canvas = canvasRef.current
     if (!video || !canvas) return null
 
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    const w = video.videoWidth || 1280
+    const h = video.videoHeight || 720
+    canvas.width = w
+    canvas.height = h
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
-    ctx.drawImage(video, 0, 0)
+    ctx.drawImage(video, 0, 0, w, h)
 
     return new Promise(resolve => {
       canvas.toBlob(blob => {
-        if (!blob) {
-          resolve(null)
-          return
-        }
+        if (!blob) { resolve(null); return }
         const file = new File([blob], 'camera-capture.jpg', { type: 'image/jpeg' })
         resolve(file)
       }, 'image/jpeg', 0.9)
     })
   }, [])
 
-  return { isCameraSupported, hasPermission, requestCameraPermission, startCamera, stopCamera, capturePhoto }
+  return { isCameraSupported, hasPermission, cameraError, startCamera, stopCamera, capturePhoto }
 }

@@ -18,7 +18,7 @@ export function Scan() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { startCamera, stopCamera, capturePhoto } = useCamera()
+  const { startCamera, stopCamera, capturePhoto, cameraError } = useCamera()
 
   useEffect(() => {
     if (activeTab === 'camera' && !preview) {
@@ -186,13 +186,27 @@ export function Scan() {
             )}
             <canvas ref={canvasRef} className="hidden" />
 
-            {preview ? (
-              <img src={preview} alt="Captured" className="absolute inset-0 w-full h-full object-cover z-10" />
-            ) : (
-              <div className="absolute inset-5 border-2 border-white/40 rounded-[16px] pointer-events-none z-10" />
+            {/* Camera error message */}
+            {cameraError && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 z-30 bg-black/80">
+                <span className="text-3xl mb-3">📷</span>
+                <p className="text-white text-sm font-medium">{cameraError}</p>
+                <button
+                  onClick={() => startCamera(videoRef)}
+                  className="mt-4 bg-white text-plant-dark text-xs font-semibold rounded-full px-5 py-2"
+                >
+                  Try Again
+                </button>
+              </div>
             )}
 
-            {!preview && (
+            {!cameraError && preview ? (
+              <img src={preview} alt="Captured" className="absolute inset-0 w-full h-full object-cover z-10" />
+            ) : !cameraError ? (
+              <div className="absolute inset-5 border-2 border-white/40 rounded-[16px] pointer-events-none z-10" />
+            ) : null}
+
+            {!cameraError && !preview && (
               <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-8 z-20">
                 <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center">
                   <span className="text-white text-lg">⚡</span>
@@ -207,7 +221,7 @@ export function Scan() {
               </div>
             )}
 
-            {preview && (
+            {!cameraError && preview && (
               <button
                 onClick={e => { e.stopPropagation(); setPreview(null); setSelectedFile(null) }}
                 className="absolute top-4 right-4 bg-white/90 backdrop-blur-md rounded-full px-4 py-1.5 text-xs font-bold text-plant-dark shadow-card z-20"
