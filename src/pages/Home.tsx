@@ -47,14 +47,15 @@ export function Home() {
       transition={{ duration: 0.25, ease: 'easeOut' }}
     >
       {/* Header */}
-      <div className="px-4 md:px-8 max-w-3xl mx-auto pt-14 pb-4">
+      <div className="px-4 pt-14 pb-4 max-w-2xl mx-auto">
         <p className="text-xs text-plant-light">{greeting}</p>
         <h1 className="font-serif text-[22px] text-plant-dark">Hello, {firstName}</h1>
       </div>
 
       {/* Hero Card */}
+      <div className="px-4 max-w-2xl mx-auto">
       <motion.div
-        className="mx-4 md:px-8 max-w-3xl md:mx-auto bg-sage-deep rounded-[28px] p-5 overflow-hidden relative"
+        className="bg-sage-deep rounded-[28px] p-5 overflow-hidden relative"
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.35, ease: 'easeOut' }}
@@ -75,9 +76,10 @@ export function Home() {
           🌿
         </div>
       </motion.div>
+      </div>
 
       {/* Quick Actions */}
-      <div className="px-4 mt-4 grid grid-cols-3 gap-2.5 max-w-3xl md:mx-auto">
+      <div className="px-4 mt-4 max-w-2xl mx-auto grid grid-cols-3 gap-3">
         {[
           { emoji: '📷', label: 'Quick Scan', path: '/scan', bg: 'bg-mint-2' },
           { emoji: '🪴', label: 'My Garden', path: '/garden', bg: 'bg-[#F5EDD6]' },
@@ -97,7 +99,7 @@ export function Home() {
       </div>
 
       {/* Recent Scans */}
-      <div className="px-4 md:px-8 max-w-3xl mx-auto mt-6">
+      <div className="px-4 max-w-2xl mx-auto mt-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[15px] font-semibold text-plant-dark">Recent Scans</h2>
           <button onClick={() => navigate('/history')} className="text-xs text-sage-dark font-medium">See all</button>
