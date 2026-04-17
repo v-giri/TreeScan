@@ -78,7 +78,11 @@ export function Scan() {
       const fileExt = selectedFile.name.split('.').pop() || 'jpg'
       const filePath = `${user.id}/${crypto.randomUUID()}.${fileExt}`
       
-      await supabase.storage.from('scan-images').upload(filePath, selectedFile)
+      const { error: uploadError } = await supabase.storage.from('scan-images').upload(filePath, selectedFile)
+      if (uploadError) {
+        throw new Error(`Storage upload failed: ${uploadError.message}`)
+      }
+      
       const { data: { publicUrl } } = supabase.storage.from('scan-images').getPublicUrl(filePath)
 
       // Call Edge Function
