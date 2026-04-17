@@ -16,7 +16,6 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  // Always return 200 so the frontend can read the error message
   const respond = (data: object) =>
     new Response(JSON.stringify(data), {
       status: 200,
@@ -24,7 +23,6 @@ serve(async (req) => {
     })
 
   try {
-    // Validate JWT
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return respond({ error: 'No authorization header — please log in again.' })
@@ -38,10 +36,9 @@ serve(async (req) => {
     if (!PLANT_ID_KEY) return respond({ error: 'Server config error: PLANT_ID_KEY not set.' })
     if (!GEMINI_KEY) return respond({ error: 'Server config error: GEMINI_KEY not set.' })
 
-    console.log(`[analyze-plant] Image size: ${imageBase64.length} chars, mime: ${mimeType}`)
-
-    // --- Step 1: Call Plant.id v3 identification ---
-    const plantIdRes = await fetch('https://api.plant.id/v3/identification', {
+    // --- Step 1: Plant.id v3 — details as URL query param ---
+    const plantIdUrl = 'https://api.plant.id/v3/identification?details=common_names,taxonomy,description&disease_details=common_names,description'
+    const plantIdRes = await fetch(plantIdUrl, {
       method: 'POST',
       headers: { 'Api-Key': PLANT_ID_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -52,52 +49,63 @@ serve(async (req) => {
     })
 
     const plantIdText = await plantIdRes.text()
-    console.log(`[analyze-plant] Plant.id status: ${plantIdRes.status}, body: ${plantIdText.slice(0, 300)}`)
+    console.log(`[analyze-plant] Plant.id status: ${plantIdRes.status}`)
+    console.log(`[analyze-plant] Plant.id response: ${plantIdText.slice(0, 800)}`)
 
     if (!plantIdRes.ok) {
       return respond({ error: `Plant.id error (${plantIdRes.status}): ${plantIdText}` })
     }
 
     const plantIdData = JSON.parse(plantIdText)
+    const result = plantIdData.result || {}
 
-    // Extract data
-    const topSuggestion = plantIdData.result?.classification?.suggestions?.[0]
-    const commonName: string = topSuggestion?.details?.common_names?.[0] || topSuggestion?.name || 'Unknown Plant'
-    const scientificName: string = topSuggestion?.name || 'Unknown'
+    // Classification
+    const topSuggestion = result.classification?.suggestions?.[0]
+    const scientificName: string = topSuggestion?.name || 'Unknown Plant'
+    const commonNames: string[] = topSuggestion?.details?.common_names || []
+    const commonName: string = commonNames[0] || scientificName
     const confidence: number = Math.round((topSuggestion?.probability || 0) * 100)
     const family: string = topSuggestion?.details?.taxonomy?.family || 'Unknown family'
 
-    const isHealthyProb: number = plantIdData.result?.is_healthy?.probability || 0
+    // Health
+    const isHealthyProb: number = result.is_healthy?.probability ?? 0.5
     const isHealthy = isHealthyProb > 0.65
 
-    const diseases = (plantIdData.result?.disease?.suggestions || [])
-      .filter((d: { probability: number; name: string }) => d.probability > 0.2)
-      .map((d: { name: string; probability: number }) => `${d.name} (${Math.round(d.probability * 100)}%)`)
+    // Diseases - use disease.suggestions from health result
+    const diseaseSuggestions = result.disease?.suggestions || []
+    const diseases: string[] = diseaseSuggestions
+      .filter((d: { probability: number }) => d.probability > 0.15)
+      .map((d: { name: string; probability: number; details?: { common_names?: string[] } }) => {
+        const displayName = d.details?.common_names?.[0] || d.name
+        return `${displayName} (${Math.round(d.probability * 100)}%)`
+      })
 
     const health = isHealthy ? 'healthy' : diseases.length > 1 ? 'critical' : 'warning'
 
-    console.log(`[analyze-plant] Identified: ${scientificName} (${confidence}%), health: ${health}`)
+    console.log(`[analyze-plant] Plant: ${commonName} / ${scientificName}, health: ${health}, diseases: ${diseases.join(', ')}`)
 
-    // --- Step 2: Build Gemini prompt ---
-    const prompt = `A plant scan identified: ${scientificName} (${confidence}% confidence).
-Healthy probability: ${Math.round(isHealthyProb * 100)}%.
-Issues detected: ${diseases.length > 0 ? diseases.join(', ') : 'none'}.
+    // --- Step 2: Gemini for personalised care plan ---
+    const prompt = `You are a plant care expert. Analyze this plant health data and provide specific, actionable advice.
 
-Return ONLY valid JSON (no markdown, no code blocks):
+Plant identified: ${commonName} (${scientificName})
+Identification confidence: ${confidence}%
+Health probability: ${Math.round(isHealthyProb * 100)}%
+Diseases/Issues detected: ${diseases.length > 0 ? diseases.join(', ') : 'none detected'}
+
+Return ONLY valid JSON (no markdown, no code blocks, no explanations):
 {
-  "treatments": ["step 1", "step 2", "step 3"],
+  "treatments": ["specific treatment step 1 for this plant", "step 2", "step 3", "step 4"],
   "careProfile": {
-    "watering": "frequency and amount",
-    "sunlight": "light requirements",
-    "soil": "soil type",
-    "fertilizer": "feeding schedule"
+    "watering": "specific watering frequency for ${commonName}",
+    "sunlight": "specific sunlight needs for ${commonName}",
+    "soil": "specific soil type for ${commonName}",
+    "fertilizer": "specific fertilizer schedule for ${commonName}"
   },
-  "summary": "Two sentence plain English description of plant health.",
-  "funFact": "One interesting fact about this plant.",
-  "urgency": "low"
+  "summary": "Two specific sentences describing THIS plant's health condition based on the scan.",
+  "funFact": "One interesting fact specifically about ${commonName}.",
+  "urgency": "${health === 'critical' ? 'high' : health === 'warning' ? 'medium' : 'low'}"
 }`
 
-    // --- Step 3: Call Gemini ---
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
       {
@@ -105,21 +113,26 @@ Return ONLY valid JSON (no markdown, no code blocks):
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { response_mime_type: 'application/json' },
+          generationConfig: { response_mime_type: 'application/json', temperature: 0.4 },
         }),
       }
     )
 
     let geminiData = {
-      treatments: ['Water regularly', 'Provide adequate sunlight', 'Use well-draining soil'],
+      treatments: [
+        `Monitor ${commonName} regularly for changes.`,
+        'Ensure proper watering — avoid overwatering.',
+        'Provide appropriate light levels.',
+        'Check for pests regularly.'
+      ],
       careProfile: {
-        watering: 'Every 7–10 days',
-        sunlight: 'Bright indirect light',
+        watering: 'Check soil moisture before watering',
+        sunlight: 'Indirect bright light',
         soil: 'Well-draining potting mix',
         fertilizer: 'Monthly during growing season',
       },
-      summary: `This ${commonName} appears to be ${health}. Monitor regularly for changes.`,
-      funFact: `${commonName} is a fascinating plant with unique characteristics.`,
+      summary: `Your ${commonName} has been analyzed. Health probability is ${Math.round(isHealthyProb * 100)}%.`,
+      funFact: `${commonName} is a fascinating plant species.`,
       urgency: health === 'critical' ? 'high' : health === 'warning' ? 'medium' : 'low',
     }
 
@@ -127,12 +140,19 @@ Return ONLY valid JSON (no markdown, no code blocks):
       const geminiJson = await geminiRes.json()
       const text = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text
       if (text) {
-        try { geminiData = JSON.parse(text) }
-        catch (e) { console.error('[analyze-plant] Gemini JSON parse failed:', e) }
+        try {
+          const parsed = JSON.parse(text)
+          geminiData = parsed
+          console.log('[analyze-plant] Gemini parsed successfully')
+        } catch (e) {
+          console.error('[analyze-plant] Gemini JSON parse failed:', String(e), '| raw:', text.slice(0, 200))
+        }
+      } else {
+        console.error('[analyze-plant] Gemini empty response:', JSON.stringify(geminiJson).slice(0, 200))
       }
     } else {
       const geminiErr = await geminiRes.text()
-      console.error(`[analyze-plant] Gemini error (${geminiRes.status}): ${geminiErr}`)
+      console.error(`[analyze-plant] Gemini error (${geminiRes.status}): ${geminiErr.slice(0, 200)}`)
     }
 
     return respond({
