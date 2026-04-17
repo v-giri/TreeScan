@@ -143,14 +143,14 @@ export function Scan() {
 
   return (
     <motion.div
-      className="min-h-screen bg-cream pb-28"
+      className="min-h-screen bg-cream pb-36"
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
     >
       {/* Header */}
-      <div className="px-4 md:px-8 max-w-screen-md mx-auto pt-14 pb-4 flex items-center gap-3">
+      <div className="px-4 max-w-2xl mx-auto pt-14 pb-4 flex items-center gap-3">
         <button
           onClick={() => navigate(-1)}
           className="w-9 h-9 bg-white rounded-[12px] shadow-card flex items-center justify-center"
@@ -177,7 +177,7 @@ export function Scan() {
         ))}
       </div>
 
-      <div className="px-4 md:max-w-screen-md md:mx-auto space-y-4">
+      <div className="px-4 max-w-2xl mx-auto space-y-4 pb-12">
         {activeTab === 'camera' ? (
           /* Camera View */
           <div className="bg-black/90 rounded-[28px] h-[340px] md:h-[400px] flex flex-col items-center justify-center relative overflow-hidden">
