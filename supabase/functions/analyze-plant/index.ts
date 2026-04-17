@@ -48,7 +48,6 @@ serve(async (req) => {
         images: [`data:${mimeType};base64,${imageBase64}`],
         health: 'all',
         classification_level: 'species',
-        details: ['common_names', 'taxonomy'],
       }),
     })
 
