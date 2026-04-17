@@ -78,37 +78,42 @@ export function Scan() {
       const fileExt = selectedFile.name.split('.').pop() || 'jpg'
       const filePath = `${user.id}/${crypto.randomUUID()}.${fileExt}`
       
-      const { error: uploadError } = await supabase.storage.from('scan-images').upload(filePath, selectedFile)
+      const arrayBuffer = await selectedFile.arrayBuffer()
+      const { error: uploadError } = await supabase.storage.from('scan-images').upload(filePath, arrayBuffer, {
+        upsert: true,
+        contentType: selectedFile.type || 'image/jpeg'
+      })
       if (uploadError) {
         throw new Error(`Storage upload failed: ${uploadError.message}`)
       }
       
       const { data: { publicUrl } } = supabase.storage.from('scan-images').getPublicUrl(filePath)
 
-      // Call Edge Function
-      const { data: result, error: analyzeError } = await supabase.functions.invoke('analyze-plant', {
-        body: {
+      // Call Edge Function via explicit fetch to avoid silent error swallowing
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token || ''
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/analyze-plant`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
           imageBase64: base64Data,
           mimeType: selectedFile.type || 'image/jpeg',
           userId: user.id
-        }
+        })
       })
 
-      if (analyzeError) {
-        // Extract the real error body from the edge function response
-        let realMessage = analyzeError.message || 'Analysis failed'
-        try {
-          // FunctionsHttpError has a .context with the actual response
-          const context = (analyzeError as any).context
-          if (context) {
-            const body = await context.json?.() || await context.text?.()
-            if (typeof body === 'object' && body?.error) realMessage = body.error
-            else if (typeof body === 'string') realMessage = body
-          }
-        } catch { /* ignore parse error */ }
-        throw new Error(realMessage)
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Edge function error (${res.status}): ${text}`)
       }
-      if (result?.error) throw new Error(result.error)
+
+      const result = await res.json()
+      if (result.error) throw new Error(result.error)
 
 
       // Save to database
