@@ -71,18 +71,25 @@ serve(async (req) => {
     const isHealthyProb: number = result.is_healthy?.probability ?? 0.5
     const isHealthy = isHealthyProb > 0.65
 
-    // Diseases - use disease.suggestions from health result
+    // Diseases — filter out the generic "Healthy plant" entry Plant.id includes
     const diseaseSuggestions = result.disease?.suggestions || []
+    console.log(`[analyze-plant] raw disease suggestions: ${JSON.stringify(diseaseSuggestions.slice(0, 5))}`)
+
+    const SKIP_NAMES = ['healthy', 'healthy plant', 'not a plant', 'plant']
     const diseases: string[] = diseaseSuggestions
-      .filter((d: { probability: number }) => d.probability > 0.15)
+      .filter((d: { probability: number; name: string }) => {
+        if (d.probability < 0.15) return false
+        const lc = (d.name || '').toLowerCase().trim()
+        return !SKIP_NAMES.includes(lc)
+      })
       .map((d: { name: string; probability: number; details?: { common_names?: string[] } }) => {
-        const displayName = d.details?.common_names?.[0] || d.name
+        const displayName = (d.details?.common_names?.[0]) || d.name || 'Unknown issue'
         return `${displayName} (${Math.round(d.probability * 100)}%)`
       })
 
     const health = isHealthy ? 'healthy' : diseases.length > 1 ? 'critical' : 'warning'
 
-    console.log(`[analyze-plant] Plant: ${commonName} / ${scientificName}, health: ${health}, diseases: ${diseases.join(', ')}`)
+    console.log(`[analyze-plant] Plant: ${commonName} / ${scientificName}, health: ${health}, diseases: [${diseases.join(', ')}]`)
 
     // --- Step 2: Gemini for personalised care plan ---
     const prompt = `You are a plant care expert. Analyze this plant health data and provide specific, actionable advice.
